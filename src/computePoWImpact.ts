@@ -1,6 +1,3 @@
-import axios from 'axios';
-import fs from 'fs';
-
 import { KCO2_PER_KWH } from './constants';
 import isContract from './utils/isContract';
 
@@ -25,44 +22,33 @@ const computePoWImpact = async (
   const prevTxHash = '';
   let impact = 0;
   let gas = 0;
+
+  const filteredBlockNumbers = Object.keys(difficultyJSON).filter((b) => {
+    return gasUsedJSON[parseInt(b)] !== undefined;
+  });
+
   for (const tx of txList) {
     // Floor to the previous XX300 block to use our cache
-    const blockNumber = Math.round((tx.blockNumber - 300) / 1000) * 1000 + 300; // To avoid parsing every block round to the hour -> leads to approx
+    let blockNumber = Math.round((tx.blockNumber - 300) / 1000) * 1000 + 300; // To avoid parsing every block round to the hour -> leads to approx
     // Deduping and checking sender
     if (prevTxHash !== tx.hash && (hasCode || tx.from.toLowerCase() === address.toLowerCase())) {
-      // Scrap Etherscan in case we don't have the data locally - API can't be used with a free endpoint
       {
         if (!difficultyJSON[blockNumber] || !gasUsedJSON[blockNumber]) {
-          try {
-            const response = await axios.get(`https://etherscan.io/block/${blockNumber}`);
-            const difficulty = parseInt(
-              response.data.split('Difficulty:</div>')[1].split('<div class="col-md-9">')[1].split('</div>')[0].replaceAll(',', '')
-            );
-            const gasUsed = parseInt(
-              response.data.split('Gas Used:</div>')[1].split('<div class="col-md-9">')[1].split('</div>')[0].replaceAll(',', '')
-            );
-            difficultyJSON[blockNumber] = difficulty;
-            fs.writeFile('DIFFICULTIES.json', JSON.stringify(difficultyJSON), (err) => {
-              if (err) {
-                console.error(err);
-              }
-            });
-            gasUsedJSON[blockNumber] = gasUsed;
-            fs.writeFile('GAS_USED.json', JSON.stringify(gasUsedJSON), (err) => {
-              if (err) {
-                console.error(err);
-              }
-            });
-          } catch (e) {
-            console.log(`Scrapping failed for block ${blockNumber}`);
-          }
+          // Take the closest blockNumber if the data is not loaded locally
+          blockNumber = parseInt(
+            filteredBlockNumbers.reduce(function (prev, curr) {
+              return Math.abs(parseInt(curr) - blockNumber) < Math.abs(parseInt(prev) - blockNumber) ? curr : prev;
+            })
+          );
         }
 
         const blockEmissions =
-          ((difficultyJSON[blockNumber] * OVER_HARDWARE * OVER_DATACENTER * LOSS_GRID) / EFFICIENCY_PSU / HASH_EFFICIENCY) * KCO2_PER_KWH; // In KCO_2
+          (((difficultyJSON[blockNumber] * OVER_HARDWARE * OVER_DATACENTER * LOSS_GRID) / EFFICIENCY_PSU / HASH_EFFICIENCY) *
+            KCO2_PER_KWH) /
+          1e3; // In tCO_2
 
         if (blockEmissions) {
-          impact += (parseInt(tx.gas) / gasUsedJSON[blockNumber]) * blockEmissions;
+          impact += (parseInt(tx.gas) / (!!gasUsedJSON[blockNumber] ? gasUsedJSON[blockNumber] : 15e6)) * blockEmissions;
         }
         gas += parseInt(tx.gas);
 

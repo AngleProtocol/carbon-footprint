@@ -20,8 +20,10 @@ const fetchTxList = async (address: string, startBlock: number, endBlock: number
     url.searchParams.append('address', address);
 
     const response = await axios.get(url.toString());
-    if (response.status !== 200 || parseInt(response.data.status) !== 1) {
+    if (response.status !== 200) {
       res.status(503).send('Etherscan unavailable');
+    } else if (parseInt(response.data.status) !== 1) {
+      return [];
     }
     return response.data.result;
   }

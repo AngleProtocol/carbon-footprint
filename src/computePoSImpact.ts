@@ -1,6 +1,3 @@
-import axios from 'axios';
-import fs from 'fs';
-
 import { KCO2_PER_KWH, MERGE_BLOCK } from './constants';
 import isContract from './utils/isContract';
 
@@ -19,50 +16,34 @@ const computePoSImpact = async (
   const prevTxHash = '';
   let impact = 0;
   let gas = 0;
+
+  const filteredBlockNumbers = Object.keys(validatorJSON).filter((b) => {
+    return gasUsedJSON[parseInt(b)] !== undefined;
+  });
   for (const tx of txList) {
     // Floor to the previous XX300 block to use our cache
     let blockNumber = Math.round((tx.blockNumber - 300) / 1000) * 1000 + 300; // To avoid parsing every block round to the hour -> leads to approx
     blockNumber = Math.max(MERGE_BLOCK, blockNumber);
     // Deduping and checking sender
     if (prevTxHash !== tx.hash && (hasCode || tx.from.toLowerCase() === address.toLowerCase())) {
-      // Scrap Etherscan in case we don't have the data locally - API can't be used with a free endpoint
       {
         if (!validatorJSON[blockNumber] || !gasUsedJSON[blockNumber]) {
-          try {
-            const response = await axios.get(`https://etherscan.io/block/${blockNumber}`);
-            const epoch = parseInt(response.data.split("<a href='https://beaconscan.com/epoch/")[1].split("'")[0]);
-            const gasUsed = parseInt(
-              response.data.split('Gas Used:</div>')[1].split('<div class="col-md-9">')[1].split('</div>')[0].replaceAll(',', '')
-            );
-            gasUsedJSON[blockNumber] = gasUsed;
-            fs.writeFile('GAS_USED.json', JSON.stringify(gasUsedJSON), (err) => {
-              if (err) {
-                console.error(err);
-              }
-            });
-
-            const beaconResponse = await axios.get(`https://beaconscan.com/epoch/${epoch}`);
-            const validators = parseInt(
-              beaconResponse.data.split('Total Validator Count')[1].split('<div class="col-md-9 font-size-1">')[1].split('</div>')[0]
-            );
-            validatorJSON[blockNumber] = validators;
-            fs.writeFile('VALIDATORS.json', JSON.stringify(validatorJSON), (err) => {
-              if (err) {
-                console.error(err);
-              }
-            });
-          } catch (e) {
-            console.log(`Scrapping failed for block ${blockNumber}`);
-          }
+          // Take the closest blockNumber if the data is not loaded locally
+          blockNumber = parseInt(
+            filteredBlockNumbers.reduce(function (prev, curr) {
+              return Math.abs(parseInt(curr) - blockNumber) < Math.abs(parseInt(prev) - blockNumber) ? curr : prev;
+            })
+          );
         }
 
         // Emissions linked to a block are estimated by computing the CO2 emitted by X computers running during 12 seconds
         // X being the number of runnings validators
         // We take into account instant consumption and a hardware deprecation factor
-        const blockEmissions = validatorJSON[blockNumber] * ((CONSUMPTION_HARDWARE * 12) / 3600 + PRODUCTION_HARDWARE) * KCO2_PER_KWH; // In KCO_2
+        const blockEmissions =
+          (validatorJSON[blockNumber] * ((CONSUMPTION_HARDWARE * 12) / 3600 + PRODUCTION_HARDWARE) * KCO2_PER_KWH) / 1e3; // In tCO_2
 
         if (blockEmissions) {
-          impact += (parseInt(tx.gas) / gasUsedJSON[blockNumber]) * blockEmissions;
+          impact += (parseInt(tx.gas) / (!!gasUsedJSON[blockNumber] ? gasUsedJSON[blockNumber] : 15e6)) * blockEmissions;
         }
         gas += parseInt(tx.gas);
 
