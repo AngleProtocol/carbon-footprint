@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy-incentives:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    steps:
+      - uses: actions/checkout@v2
+      - uses: 'google-github-actions/auth@v0'
+        with:
+          credentials_json: '${{ secrets.GCLOUD_SECRET }}'
+      - name: Create .env file
+        run: |
+          touch .env
+          echo "PROVIDER_MAINNET=https://eth-mainnet.alchemyapi.io/v2/X6xn7Y_g2NspToj_ug0R0KsWgbqzBVvC" >> .env
+          echo "PROVIDER_POLYGON=https://polygon-mainnet.g.alchemy.com/v2/IJTj5SikhXCIV_a021XV2xpbLL8ibwUP" >> .env
+          echo "PROVIDER_FANTOM=https://rpc.ftm.tools" >> .env
+          echo "PRIVATE_KEY_UNISWAP_INCENTIVES=${{ secrets.PRIVATE_KEY_UNISWAP_INCENTIVES }}" >> .env
+          echo "PINATA_KEY=${{ secrets.PINATA_KEY }}" >> .env
+          echo "PINATA_SECRET=${{ secrets.PINATA_SECRET }}" >> .env
+      - uses: 'google-github-actions/deploy-appengine@v0'
