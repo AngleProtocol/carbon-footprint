@@ -34,8 +34,8 @@ app.use(
 app.use('/v1', impact);
 app.use('/v1/pow', pow);
 app.use('/v1/pos', pos);
-app.use('/v1/powCache', powCache);
-app.use('/v1/posCache', posCache);
+// app.use('/v1/powCache', powCache);
+// app.use('/v1/posCache', posCache);
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => console.log(`Listening on PORT: ${PORT}`));
